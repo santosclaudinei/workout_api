@@ -1,6 +1,6 @@
 from datetime import datetime
 from uuid import uuid4
-from fastapi import APIRouter, Body, HTTPException, status
+from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import UUID4
 from sqlalchemy import select
 
@@ -100,6 +100,52 @@ async def query(id: UUID4, db_session: DatabaseDependency) -> AtletaOut:
             detail=f'Atleta não encontrada para o ID: {id}'
         )
     
+    return atleta
+
+@router.get(
+    '/nome/',
+    summary='Buscar atleta por nome',
+    status_code=status.HTTP_200_OK,
+    response_model=AtletaOut
+)
+async def query(
+    db_session: DatabaseDependency,
+    nome: str
+) -> AtletaOut:
+    
+    atleta: AtletaOut = (
+        await db_session.execute(select(AtletaModel).filter(AtletaModel.nome == nome))
+    ).scalars().first()
+
+    if atleta is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Atleta com nome {nome} não encontrado.'
+        )
+
+    return atleta
+
+@router.get(
+    '/cpf/',
+    summary='Buscar atleta por CPF',
+    status_code=status.HTTP_200_OK,
+    response_model=AtletaOut
+)
+async def query(
+    db_session: DatabaseDependency,
+    cpf: str
+) -> AtletaOut:
+    
+    atleta: AtletaOut = (
+        await db_session.execute(select(AtletaModel).filter(AtletaModel.cpf == cpf))
+    ).scalars().first()
+
+    if atleta is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f'Atleta com CPF {cpf} não encontrado.'
+        )
+
     return atleta
 
 @router.patch(
