@@ -1,11 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from sqlite3 import IntegrityError
 from uuid import uuid4
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import UUID4
 from sqlalchemy import select
 
 from workut_api.atleta.models import AtletaModel
-from workut_api.atleta.schemas import AtletaCreatedResponse, AtletaIn, AtletaOut, AtletaPatch
+from workut_api.atleta.schemas import AtletaCreatedResponse, AtletaGetAllResponse, AtletaIn, AtletaOut, AtletaPatch
 from workut_api.categorias.models import CategoriaModel
 from workut_api.centro_treinamento.models import CentroTreinamentoModel
 from workut_api.contrib.dependencies import DatabaseDependency
@@ -23,34 +24,45 @@ async def post(
     db_session: DatabaseDependency,
     atleta_in: AtletaIn = Body(...)
 ):
-    
-    categoria_nome = atleta_in.categoria.nome
-    centro_treinamento_nome = atleta_in.centro_treinamento.nome
-
-    categoria = (await db_session.execute(
-        select(CategoriaModel).filter_by(nome=categoria_nome))
-    ).scalars().first()
-
-    if not categoria:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f'Categoria {categoria_nome} não foi encontrada.'
-        )
-    
-    centro_treinamento = (await db_session.execute(
-        select(CentroTreinamentoModel).filter_by(nome=centro_treinamento_nome))
-    ).scalars().first()
-    
-    if not centro_treinamento:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f'Centro de treinamento {centro_treinamento} não foi encontrado.'
-        )
     try:
+        existing_atleta = (await db_session.execute(
+            select(AtletaModel).filter_by(cpf=atleta_in.cpf))
+        ).scalars().first()
+
+        if existing_atleta:
+            raise HTTPException(
+                status_code=status.HTTP_303_SEE_OTHER,
+                detail=f'Já existe um atleta cadastrado com o CPF: {atleta_in.cpf}.'
+            )
+        
+        categoria_nome = atleta_in.categoria.nome
+        centro_treinamento_nome = atleta_in.centro_treinamento.nome
+
+        categoria = (await db_session.execute(
+            select(CategoriaModel).filter_by(nome=categoria_nome))
+        ).scalars().first()
+
+        if not categoria:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'Categoria {categoria_nome} não foi encontrada.'
+            )
+        
+        centro_treinamento = (await db_session.execute(
+            select(CentroTreinamentoModel).filter_by(nome=centro_treinamento_nome))
+        ).scalars().first()
+    
+        if not centro_treinamento:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f'Centro de treinamento {centro_treinamento} não foi encontrado.'
+            )
+    # try:
         atleta_id = uuid4()
+        created_at = datetime.now(timezone.utc).replace(tzinfo=None)
         atleta_out = AtletaOut(
             id=atleta_id, 
-            created_at=datetime.now(datetime.UTC), 
+            created_at=created_at, 
             **atleta_in.model_dump()
         )
 
@@ -63,25 +75,27 @@ async def post(
 
         db_session.add(atleta_model)
         await db_session.commit()
-    except Exception:
+
+    except IntegrityError:
         raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f'Ocorreu um erro ao tentar inserir os dados no banco.'
+            status_code=status.HTTP_303_SEE_OTHER,
+            detail=f'Já existe um atleta cadastrado com o cpf: {atleta_in.cpf}.'
         )
+
     return AtletaCreatedResponse(id=atleta_id)
 
 @router.get(
     '/',
     summary='Consultar todos os atletas',
     status_code=status.HTTP_200_OK,
-    response_model=list[AtletaOut],
+    response_model=list[AtletaGetAllResponse],
 )
-async def query(db_session: DatabaseDependency) -> list[AtletaOut]:
-    atletas: list[AtletaOut] = (await db_session.execute(
+async def query(db_session: DatabaseDependency) -> list[AtletaGetAllResponse]:
+    atletas: list[AtletaGetAllResponse] = (await db_session.execute(
         select(AtletaModel)
     )).scalars().all()
 
-    return [AtletaOut.model_validate(atleta) for atleta in atletas]
+    return [AtletaGetAllResponse.model_validate(atleta) for atleta in atletas]
 
 @router.get(
     '/{id}',
@@ -97,7 +111,7 @@ async def query(id: UUID4, db_session: DatabaseDependency) -> AtletaOut:
     if not atleta:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            detail=f'Atleta não encontrada para o ID: {id}'
+            detail=f'Atleta não encontrado para o ID: {id}'
         )
     
     return atleta
@@ -162,7 +176,7 @@ async def query(id: UUID4, db_session: DatabaseDependency, atleta_patch: AtletaP
     if not atleta:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Atleta não encontrada para o ID: {id}'
+            detail=f'Atleta não encontrado para o ID: {id}'
         )
 
     atleta_update = atleta_patch.model_dump(exclude_unset=True)
@@ -187,7 +201,7 @@ async def query(id: UUID4, db_session: DatabaseDependency) -> None:
     if not atleta:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Atleta não encontrada para o ID: {id}'
+            detail=f'Atleta não encontrado para o ID: {id}'
         )
     
     await db_session.delete(atleta)
