@@ -31,3 +31,9 @@ class AtletaPatch(BaseSchema):
     peso: Annotated[Optional[PositiveFloat], Field(description='Peso do atleta', example=85)]
     altura: Annotated[Optional[PositiveFloat], Field(description='Peso do atleta', example=1.85)]
     sexo: Annotated[Optional[str], Field(description='Sexo do atleta', example='M', max_length=1)]
+
+class AtletaGetAllResponse(BaseSchema):
+    id: Annotated[UUID4, Field(description='Identificador do atleta')]
+    nome: Annotated[str, Field(description='Nome do atleta', example='José', max_length=50)]
+    centro_treinamento: CentroTreinamentoAtleta
+    categoria: CategoriaIn
